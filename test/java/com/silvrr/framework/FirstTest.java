@@ -1,7 +1,5 @@
 package com.silvrr.framework;
 
-import kafka.common.ErrorMapping;
-
 public class FirstTest {
 	public static void print(String prefix,byte[] bytes,int offset,int length){
 		StringBuilder sb = new StringBuilder();

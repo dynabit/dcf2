@@ -29,6 +29,7 @@ public class TestConsumer {
 	private AtomicBoolean started=new AtomicBoolean(false);
 	private boolean running;
 	
+	@SuppressWarnings("rawtypes")
 	private Map<Class,Handler> handlerMap=new HashMap<Class,Handler>();
 	
 	public <T> TestConsumer on(Class<T> clz,Handler<T> handler){
@@ -96,8 +97,8 @@ public class TestConsumer {
     public void stop(){
     	this.running=false;
     }
- 
-    private void run(int offset) throws Exception {
+
+	private void run(int offset) throws Exception {
         // find the meta data about the topic and partition we are interested in
         //
         SocketInfo lead = findLeader(replicaBrokers, topic, partition);
@@ -169,9 +170,10 @@ public class TestConsumer {
                 	log.warn("Might be a null object of "+cls);
                 	continue;
                 }
-                Class clz = PSSerializer.getInstance().getClassByName(cls);
+                Class<?> clz = PSSerializer.getInstance().getClassByName(cls);
                 if(clz!=null){
-                	Handler h = this.handlerMap.get(clz);
+                	@SuppressWarnings("unchecked")
+					Handler<Object> h = this.handlerMap.get(clz);
                 	if(h!=null){
 	                	Object object = PSSerializer.getInstance().deser(key.arrayOffset()+key.limit()+4, key.capacity()-4-key.limit(), key.array(), clz);
                     	h.handle(object);
