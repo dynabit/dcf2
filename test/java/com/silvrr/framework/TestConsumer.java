@@ -1,0 +1,297 @@
+package com.silvrr.framework;
+
+import kafka.api.FetchRequest;
+import kafka.api.FetchRequestBuilder;
+import kafka.api.PartitionOffsetRequestInfo;
+import kafka.common.ErrorMapping;
+import kafka.common.TopicAndPartition;
+import kafka.javaapi.*;
+import kafka.javaapi.consumer.SimpleConsumer;
+import kafka.message.Message;
+import kafka.message.MessageAndOffset;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+public class TestConsumer {
+	
+	private boolean infoValid=false;
+	private String topic;
+	private int partition;
+	private AtomicBoolean started=new AtomicBoolean(false);
+	private boolean running;
+	
+	private Map<Class,Handler> handlerMap=new HashMap<Class,Handler>();
+	
+	public <T> TestConsumer on(Class<T> clz,Handler<T> handler){
+		handlerMap.put(clz, handler);
+		return this;
+	}
+	
+    private List<SocketInfo> replicaBrokers;
+ 
+    private TestConsumer(){;}
+    private void init(String topic,int partition,List<SocketInfo> replicaBrokers){
+    	this.replicaBrokers=replicaBrokers;
+    	this.topic=topic;
+    	this.partition=partition;
+    }
+    public TestConsumer(String topic,int partition,int port,String... seedBrokers){
+    	this();
+    	if(topic==null)return;
+    	if(seedBrokers==null)return;
+    	if(seedBrokers.length==0)return;
+    	List<SocketInfo> brokers = new ArrayList<SocketInfo>();
+    	for(int i=0;i<seedBrokers.length;i++){
+    		brokers.add(new SocketInfo(seedBrokers[i],port));
+    	}
+    	init(topic,partition,brokers);
+    	infoValid=true;
+    }
+    public TestConsumer(String topic,int partition,String[] seedBrokers,int[] ports) {
+    	this();
+    	if(topic==null)return;
+    	if(seedBrokers==null)return;
+    	if(seedBrokers.length==0)return;
+    	if(ports==null)return;
+    	if(ports.length==0)return;
+    	if(seedBrokers.length!=ports.length)return;
+    	List<SocketInfo> brokers = new ArrayList<SocketInfo>();
+    	for(int i=0;i<seedBrokers.length;i++){
+    		brokers.add(new SocketInfo(seedBrokers[i],ports[i]));
+    	}
+    	init(topic,partition,brokers);
+    	infoValid=true;
+    }
+    
+    public boolean start(){
+    	if(!infoValid)return false;
+    	if(started.compareAndSet(false, true)){
+    		new Thread(
+    			()->{
+	    			try {
+	    				this.running=true;
+						this.run();
+					} catch (Exception e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+	    		}
+    		).start();
+    		return true;
+    	}else{
+    		//started once
+    		return false;
+    	}
+    }
+    
+    public void stop(){
+    	this.running=false;
+    }
+ 
+    private void run() throws Exception {
+        // find the meta data about the topic and partition we are interested in
+        //
+        SocketInfo lead = findLeader(replicaBrokers, topic, partition);
+        if(lead==null){
+        	return;
+        }
+        String clientName = "Client_" + topic + "_" + partition;
+ 
+        SimpleConsumer consumer = new SimpleConsumer(lead.getHost(), lead.getPort(), 100000, 64 * 1024, clientName);
+        long readOffset = getLastOffset(consumer,topic, partition, kafka.api.OffsetRequest.EarliestTime(), clientName);
+ 
+        int numErrors = 0;
+        while (running) {
+            if (consumer == null) {
+                consumer = new SimpleConsumer(lead.getHost(), lead.getPort(), 100000, 64 * 1024, clientName);
+            }
+            FetchRequest req = new FetchRequestBuilder()
+                    .clientId(clientName)
+                    .addFetch(topic, partition, readOffset, 100000) // Note: this fetchSize of 100000 might need to be increased if large batches are written to Kafka
+                    .build();
+            FetchResponse fetchResponse = consumer.fetch(req);
+ 
+            if (fetchResponse.hasError()) {
+                numErrors++;
+                // Something went wrong!
+                short code = fetchResponse.errorCode(topic, partition);
+                System.out.println("Error fetching data from the Broker:" + lead.toString() + " Reason: " + code);
+                if (numErrors > 5) break;
+                if (code == ErrorMapping.OffsetOutOfRangeCode())  {
+                    // We asked for an invalid offset. For simple case ask for the last element to reset
+                    readOffset = getLastOffset(consumer,topic, partition, kafka.api.OffsetRequest.LatestTime(), clientName);
+                    continue;
+                }
+                consumer.close();
+                consumer = null;
+                lead = findNewLeader(lead, topic, partition);
+                continue;
+            }
+            numErrors = 0;
+ 
+            long numRead = 0;
+            for (MessageAndOffset messageAndOffset : fetchResponse.messageSet(topic, partition)) {
+                long currentOffset = messageAndOffset.offset();
+                if (currentOffset < readOffset) {
+                    System.out.println("Found an old offset: " + currentOffset + " Expecting: " + readOffset);
+                    continue;
+                }
+                readOffset = messageAndOffset.nextOffset();
+                Message msg = messageAndOffset.message();
+                if(!msg.hasKey()){
+                	System.out.println("Expecting key as class full name");
+                	continue;
+                }
+                ByteBuffer key = msg.key();
+                FirstTest.print("recved:",key.array(),54+topic.length(),msg.keySize());
+                String cls = null;
+                try{
+                	cls = new String(key.array(),54+topic.length(),msg.keySize(),"UTF-8");
+                }catch(Exception e){
+                	e.printStackTrace();
+                	System.out.println("Converting class full name failed");
+                	continue;
+                }
+                
+                Class clz = PSSerializer.getInstance().getClassByName(cls);
+                if(clz!=null){
+                	Handler h = this.handlerMap.get(clz);
+                	if(h!=null){
+	                	ByteBuffer payload = msg.payload();
+	                    Object object = PSSerializer.getInstance().deser(0, msg.payloadSize(), payload.array(), clz);
+                    	h.handle(object);
+                	}else{
+                    	System.out.println("no handler defined for "+clz);
+                    }
+                }else{
+                	System.out.println("no class is register for serialization "+cls);
+                }
+                numRead++;
+            }
+ 
+            if (numRead == 0) {
+                try {
+                	System.out.println("fetched no record");
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                }
+            }
+        }
+        if (consumer != null) consumer.close();
+    }
+ 
+    public static long getLastOffset(SimpleConsumer consumer, String topic, int partition,
+                                     long whichTime, String clientName) {
+        TopicAndPartition topicAndPartition = new TopicAndPartition(topic, partition);
+        Map<TopicAndPartition, PartitionOffsetRequestInfo> requestInfo = new HashMap<TopicAndPartition, PartitionOffsetRequestInfo>();
+        requestInfo.put(topicAndPartition, new PartitionOffsetRequestInfo(whichTime, 1));
+        kafka.javaapi.OffsetRequest request = new kafka.javaapi.OffsetRequest(
+                requestInfo, kafka.api.OffsetRequest.CurrentVersion(), clientName);
+        OffsetResponse response = consumer.getOffsetsBefore(request);
+ 
+        if (response.hasError()) {
+            System.out.println("Error fetching data Offset Data the Broker. Reason: " + response.errorCode(topic, partition) );
+            return 0;
+        }
+        long[] offsets = response.offsets(topic, partition);
+        return offsets[0];
+    }
+ 
+    private SocketInfo findNewLeader(SocketInfo oldLead, String topic, int partition) throws Exception {
+        for (int i = 0; i < 3; i++) {
+            boolean goToSleep = false;
+            SocketInfo lead = findLeader(replicaBrokers, topic, partition);
+            if (lead == null) {
+                goToSleep = true;
+            } else if (oldLead.getHost().equalsIgnoreCase(lead.getHost()) && oldLead.getPort()==lead.getPort() && i == 0) {
+                // first time through if the leader hasn't changed give ZooKeeper a second to recover
+                // second time, assume the broker did recover before failover, or it was a non-Broker issue
+                //
+                goToSleep = true;
+            } else {
+                return lead;
+            }
+            if (goToSleep) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                }
+            }
+        }
+        System.out.println("Unable to find new leader after Broker failure. Exiting");
+        throw new Exception("Unable to find new leader after Broker failure. Exiting");
+    }
+ 
+    private SocketInfo findLeader(List<SocketInfo> brokers, String topic, int partition) {
+        PartitionMetadata returnMetaData = null;
+        for (SocketInfo broker : brokers) {
+            String seed=broker.getHost();
+            int port=broker.getPort();
+        	SimpleConsumer consumer = null;
+            try {
+                consumer = new SimpleConsumer(seed, port, 100000, 64 * 1024, "leaderLookup");
+                List<String> topics = Collections.singletonList(topic);
+                TopicMetadataRequest req = new TopicMetadataRequest(topics);
+                kafka.javaapi.TopicMetadataResponse resp = consumer.send(req);
+ 
+                List<TopicMetadata> metaData = resp.topicsMetadata();
+                for (TopicMetadata item : metaData) {
+                    for (PartitionMetadata part : item.partitionsMetadata()) {
+                        if (part.partitionId() == partition) {
+                            returnMetaData = part;
+                            break;
+                        }
+                    }
+                    if(returnMetaData!=null)break;
+                }
+            } catch (Exception e) {
+                System.out.println("Error communicating with Broker [" + seed + "] to find Leader for [" + topic
+                        + ", " + partition + "] Reason: " + e);
+            } finally {
+                if (consumer != null) consumer.close();
+            }
+            if(returnMetaData!=null)break;
+        }
+        if (returnMetaData != null) {
+            replicaBrokers.clear();
+            for (kafka.cluster.Broker replica : returnMetaData.replicas()) {
+                replicaBrokers.add(new SocketInfo(replica.host(),replica.port()));
+            }
+            if(returnMetaData.leader()!=null)
+            	return new SocketInfo(returnMetaData.leader().host(),returnMetaData.leader().port());
+            else{
+            	System.out.println("Can't find Leader for Topic and Partition. Exiting");
+            	return null;
+            }
+        }else{
+            System.out.println("Can't find metadata for Topic and Partition. Exiting");
+        	return null;
+        }
+    }
+    
+    private static class SocketInfo{
+    	private String host;
+    	private int port;
+		public SocketInfo(String host, int port) {
+			super();
+			this.host = host;
+			this.port = port;
+		}
+		public String getHost() {
+			return host;
+		}
+		public int getPort() {
+			return port;
+		}
+		@Override
+		public String toString() {
+			return "SocketInfo [host=" + host + ", port=" + port + "]";
+		}
+    }
+}
