@@ -24,7 +24,6 @@ public class TestProducer {
 	public <T> boolean send(String topic,T obj,Partitioner<T> partitioner,Callback callback){
 		int partition = partitioner.getPartition(obj);
 		try{
-			byte[] bytes=obj.getClass().getName().getBytes("UTF-8");
 			producer.send(new ProducerRecord<byte[],byte[]>(topic,partition,
 					obj.getClass().getName().getBytes("UTF-8"),PSSerializer.getInstance().ser(obj)), 
 					callback);

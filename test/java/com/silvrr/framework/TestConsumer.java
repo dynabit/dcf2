@@ -18,8 +18,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class TestConsumer {
-	
+	private static Logger log = LoggerFactory.getLogger(TestConsumer.class);
 	private boolean infoValid=false;
 	private String topic;
 	private int partition;
@@ -104,12 +107,13 @@ public class TestConsumer {
         String clientName = "Client_" + topic + "_" + partition;
  
         SimpleConsumer consumer = new SimpleConsumer(lead.getHost(), lead.getPort(), 100000, 64 * 1024, clientName);
-        long readOffset = getLastOffset(consumer,topic, partition, kafka.api.OffsetRequest.EarliestTime(), clientName);
-        if(offset<readOffset){
-        	System.out.println((readOffset-offset)+" messages are lost");
-        }else{
-        	readOffset=offset;
-        }
+        long readOffset = getLastOffset(consumer,topic, partition, offset<0?kafka.api.OffsetRequest.LatestTime():kafka.api.OffsetRequest.EarliestTime(), clientName);
+        if(offset>=0)
+	        if(offset<readOffset){
+	        	log.warn((readOffset-offset)+" messages are lost");
+	        }else{
+	        	readOffset=offset;
+	        }
         int numErrors = 0;
         while (running) {
             if (consumer == null) {
@@ -125,7 +129,7 @@ public class TestConsumer {
                 numErrors++;
                 // Something went wrong!
                 short code = fetchResponse.errorCode(topic, partition);
-                System.out.println("Error fetching data from the Broker:" + lead.toString() + " Reason: " + code);
+                log.warn("Error fetching data from the Broker:" + lead.toString() + " Code: " + code + " Reason: " + KafkaV8Error.get(code));
                 if (numErrors > 5) break;
                 if (code == ErrorMapping.OffsetOutOfRangeCode())  {
                     // We asked for an invalid offset. For simple case ask for the last element to reset
@@ -141,16 +145,16 @@ public class TestConsumer {
  
             long numRead = 0;
             for (MessageAndOffset messageAndOffset : fetchResponse.messageSet(topic, partition)) {
-                long currentOffset = messageAndOffset.offset();
-                System.out.println("currentOffset:"+currentOffset);
+            	long currentOffset = messageAndOffset.offset();
+                log.trace("currentOffset:"+currentOffset);
                 if (currentOffset < readOffset) {
-                    System.out.println("Found an old offset: " + currentOffset + " Expecting: " + readOffset);
+                    log.warn("Found an old offset: " + currentOffset + " Expecting: " + readOffset);
                     continue;
                 }
                 readOffset = messageAndOffset.nextOffset();
                 Message msg = messageAndOffset.message();
                 if(!msg.hasKey()){
-                	System.out.println("Expecting key as class full name");
+                	log.warn("Expecting key as class full name");
                 	continue;
                 }
                 ByteBuffer key = msg.key();
@@ -158,12 +162,11 @@ public class TestConsumer {
                 try{
                 	cls = new String(key.array(),key.arrayOffset(),key.limit(),"UTF-8");
                 }catch(Exception e){
-                	e.printStackTrace();
-                	System.out.println("Converting class full name failed");
+                	log.warn("Converting class full name failed",e);
                 	continue;
                 }
                 if(key.capacity()-key.limit()<=4){
-                	System.out.println("Might be a null object of "+cls);
+                	log.warn("Might be a null object of "+cls);
                 	continue;
                 }
                 Class clz = PSSerializer.getInstance().getClassByName(cls);
@@ -173,18 +176,17 @@ public class TestConsumer {
 	                	Object object = PSSerializer.getInstance().deser(key.arrayOffset()+key.limit()+4, key.capacity()-4-key.limit(), key.array(), clz);
                     	h.handle(object);
                 	}else{
-                    	System.out.println("no handler defined for "+clz);
+                    	log.warn("no handler defined for "+clz);
                     }
                 }else{
-                	System.out.println("no class is register for serialization "+cls);
+                	log.warn("no class is register for serialization "+cls);
                 }
                 numRead++;
             }
  
             if (numRead == 0) {
                 try {
-                	System.out.println("fetched no record");
-                    Thread.sleep(1000);
+                	Thread.sleep(1000);
                 } catch (InterruptedException ie) {
                 }
             }
@@ -202,7 +204,7 @@ public class TestConsumer {
         OffsetResponse response = consumer.getOffsetsBefore(request);
  
         if (response.hasError()) {
-            System.out.println("Error fetching data Offset Data the Broker. Reason: " + response.errorCode(topic, partition) );
+            log.warn("Error fetching data Offset Data the Broker. Reason: " + response.errorCode(topic, partition) );
             return 0;
         }
         long[] offsets = response.offsets(topic, partition);
@@ -230,7 +232,7 @@ public class TestConsumer {
                 }
             }
         }
-        System.out.println("Unable to find new leader after Broker failure. Exiting");
+        log.error("Unable to find new leader after Broker failure. Exiting");
         throw new Exception("Unable to find new leader after Broker failure. Exiting");
     }
  
@@ -257,8 +259,8 @@ public class TestConsumer {
                     if(returnMetaData!=null)break;
                 }
             } catch (Exception e) {
-                System.out.println("Error communicating with Broker [" + seed + "] to find Leader for [" + topic
-                        + ", " + partition + "] Reason: " + e);
+                log.error("Error communicating with Broker [" + seed + "] to find Leader for [" + topic
+                        + ", " + partition + "]", e);
             } finally {
                 if (consumer != null) consumer.close();
             }
@@ -272,11 +274,11 @@ public class TestConsumer {
             if(returnMetaData.leader()!=null)
             	return new SocketInfo(returnMetaData.leader().host(),returnMetaData.leader().port());
             else{
-            	System.out.println("Can't find Leader for Topic and Partition. Exiting");
+            	log.error("Can't find Leader for Topic and Partition. Exiting");
             	return null;
             }
         }else{
-            System.out.println("Can't find metadata for Topic and Partition. Exiting");
+            log.error("Can't find metadata for Topic and Partition. Exiting");
         	return null;
         }
     }
