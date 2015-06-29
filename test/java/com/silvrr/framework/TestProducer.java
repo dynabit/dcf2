@@ -25,7 +25,6 @@ public class TestProducer {
 		int partition = partitioner.getPartition(obj);
 		try{
 			byte[] bytes=obj.getClass().getName().getBytes("UTF-8");
-			FirstTest.print("sent:",bytes,0,bytes.length);
 			producer.send(new ProducerRecord<byte[],byte[]>(topic,partition,
 					obj.getClass().getName().getBytes("UTF-8"),PSSerializer.getInstance().ser(obj)), 
 					callback);

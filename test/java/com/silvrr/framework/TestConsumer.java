@@ -69,14 +69,14 @@ public class TestConsumer {
     	infoValid=true;
     }
     
-    public boolean start(){
+    public boolean start(int offset){
     	if(!infoValid)return false;
     	if(started.compareAndSet(false, true)){
     		new Thread(
     			()->{
 	    			try {
 	    				this.running=true;
-						this.run();
+						this.run(offset);
 					} catch (Exception e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
@@ -94,7 +94,7 @@ public class TestConsumer {
     	this.running=false;
     }
  
-    private void run() throws Exception {
+    private void run(int offset) throws Exception {
         // find the meta data about the topic and partition we are interested in
         //
         SocketInfo lead = findLeader(replicaBrokers, topic, partition);
@@ -105,7 +105,11 @@ public class TestConsumer {
  
         SimpleConsumer consumer = new SimpleConsumer(lead.getHost(), lead.getPort(), 100000, 64 * 1024, clientName);
         long readOffset = getLastOffset(consumer,topic, partition, kafka.api.OffsetRequest.EarliestTime(), clientName);
- 
+        if(offset<readOffset){
+        	System.out.println((readOffset-offset)+" messages are lost");
+        }else{
+        	readOffset=offset;
+        }
         int numErrors = 0;
         while (running) {
             if (consumer == null) {
@@ -138,6 +142,7 @@ public class TestConsumer {
             long numRead = 0;
             for (MessageAndOffset messageAndOffset : fetchResponse.messageSet(topic, partition)) {
                 long currentOffset = messageAndOffset.offset();
+                System.out.println("currentOffset:"+currentOffset);
                 if (currentOffset < readOffset) {
                     System.out.println("Found an old offset: " + currentOffset + " Expecting: " + readOffset);
                     continue;
@@ -149,22 +154,23 @@ public class TestConsumer {
                 	continue;
                 }
                 ByteBuffer key = msg.key();
-                FirstTest.print("recved:",key.array(),54+topic.length(),msg.keySize());
                 String cls = null;
                 try{
-                	cls = new String(key.array(),54+topic.length(),msg.keySize(),"UTF-8");
+                	cls = new String(key.array(),key.arrayOffset(),key.limit(),"UTF-8");
                 }catch(Exception e){
                 	e.printStackTrace();
                 	System.out.println("Converting class full name failed");
                 	continue;
                 }
-                
+                if(key.capacity()-key.limit()<=4){
+                	System.out.println("Might be a null object of "+cls);
+                	continue;
+                }
                 Class clz = PSSerializer.getInstance().getClassByName(cls);
                 if(clz!=null){
                 	Handler h = this.handlerMap.get(clz);
                 	if(h!=null){
-	                	ByteBuffer payload = msg.payload();
-	                    Object object = PSSerializer.getInstance().deser(0, msg.payloadSize(), payload.array(), clz);
+	                	Object object = PSSerializer.getInstance().deser(key.arrayOffset()+key.limit()+4, key.capacity()-4-key.limit(), key.array(), clz);
                     	h.handle(object);
                 	}else{
                     	System.out.println("no handler defined for "+clz);
