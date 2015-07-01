@@ -12,7 +12,7 @@ public class FirstTest {
 	public static void main(String args[]) throws Exception {
 		PSSerializer.getInstance().register(OperateRequest.class);
 		OperateRequest r = new OperateRequest();
-		r.amount=100;r.id=1L;r.message="heihei";r.txID="txid01";
+		r.amount=100;r.uid=1L;r.message="heihei";r.txID="txid01";
 
 		TestProducer.getInstance();
 		TestConsumer c = new TestConsumer("stateChange",0,9092,"localhost");
