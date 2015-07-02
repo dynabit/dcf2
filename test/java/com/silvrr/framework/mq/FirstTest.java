@@ -1,4 +1,7 @@
-package com.silvrr.framework;
+package com.silvrr.framework.mq;
+
+import com.silvrr.framework.OperateRequest;
+import com.silvrr.framework.PSSerializer;
 
 public class FirstTest {
 	public static void print(String prefix,byte[] bytes,int offset,int length){

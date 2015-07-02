@@ -1,4 +1,4 @@
-package com.silvrr.framework;
+package com.silvrr.framework.mq;
 
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.silvrr.framework.PSSerializer;
 
 public class TestConsumer {
 	private static Logger log = LoggerFactory.getLogger(TestConsumer.class);

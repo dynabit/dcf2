@@ -1,4 +1,4 @@
-package com.silvrr.framework;
+package com.silvrr.framework.mq;
 
 import java.util.HashMap;
 import java.util.Map;
