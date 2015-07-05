@@ -1,48 +1,28 @@
-package com.silvrr.framework.kvs;
+package com.silvrr.framework.test;
+
+import static com.silvrr.framework.test.KVSConverter.binsOfOperateRequest;
+import static com.silvrr.framework.test.KVSConverter.keyOfOperateRequest;
+import static com.silvrr.framework.kvs.ASDCallback.SeperateWriteCallback.success;
+import static com.silvrr.framework.kvs.ASDCallback.SingleWriteCallback.done;
 
 import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.async.AsyncClient;
 import com.aerospike.client.policy.CommitLevel;
-import com.aerospike.client.policy.ScanPolicy;
 import com.aerospike.client.policy.WritePolicy;
-import com.silvrr.framework.OperateRequest;
-import com.silvrr.framework.kvs.ASDObjectConverter.BinsOf;
-import com.silvrr.framework.kvs.ASDObjectConverter.KeyOf;
+import com.silvrr.framework.kvs.ASDKVS;
+import com.silvrr.test.biz.OperateRequest;
 
-import static com.silvrr.framework.kvs.AerospikeCallback.SeperateWriteCallback.*;
-import static com.silvrr.framework.kvs.AerospikeCallback.SingleWriteCallback.*;
-import static com.silvrr.framework.kvs.ASDObjectConverter.*;
-
-public class TestKVS {
-	
-	private static TestKVS instance=new TestKVS();
-	public static TestKVS getInstance(){
-		return instance;
-	}
-	
-	private AsyncClient client = new AsyncClient("localhost", 3000);
-	private WritePolicy wPolicy = new WritePolicy();
-	private ScanPolicy sPolicy = new ScanPolicy();
-	
-	private TestKVS(){
-		wPolicy.commitLevel=CommitLevel.COMMIT_MASTER;
-	}
-	
-	@Override
-	protected void finalize(){
-		this.client.close();
-	}
-	
-	public <T> void fire(long offset,T obj,KeyOf<T> key,BinsOf<T> bins){
-		this.client.put(wPolicy,null,key.of(obj),bins.of(obj,offset));
-	}
-	
+public class KVSTest {
 	public static void main(String[] args) throws Exception {
 		OperateRequest r = new OperateRequest();
 		r.amount=100;r.uid=1L;r.message="heihei";r.txID="txid01";
-		TestKVS.getInstance().fire(1,r,keyOfOperateRequest,binsOfOperateRequest);
+		ASDKVS.getInstance().fire(r,keyOfOperateRequest,binsOfOperateRequest);
 		Thread.sleep(5000L);
+		ASDKVS.getInstance().scanAll("test", "partition0",(key,record)->{
+			System.out.println(key.userKey);
+			System.out.println(record.toString());
+		});
 	}
 	
 	public static void rawTest() throws Exception{

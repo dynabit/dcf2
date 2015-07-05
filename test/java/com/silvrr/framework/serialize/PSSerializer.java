@@ -1,4 +1,4 @@
-package com.silvrr.framework;
+package com.silvrr.framework.serialize;
 
 import java.util.ArrayList;
 import java.util.HashMap;

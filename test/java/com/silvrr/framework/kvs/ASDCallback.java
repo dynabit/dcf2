@@ -4,7 +4,7 @@ import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.aerospike.client.listener.WriteListener;
 
-public class AerospikeCallback {
+public class ASDCallback {
 	public static class SeperateWriteCallback{
 		public static LambdaSperateWriteListener success(WriteSuccess success){
 			return new LambdaSperateWriteListener().success(success);

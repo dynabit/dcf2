@@ -21,33 +21,39 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.silvrr.framework.PSSerializer;
+import com.silvrr.framework.serialize.PSSerializer;
 
-public class TestConsumer {
-	private static Logger log = LoggerFactory.getLogger(TestConsumer.class);
+public class KConsumer {
+	private static Logger log = LoggerFactory.getLogger(KConsumer.class);
 	private boolean infoValid=false;
 	private String topic;
 	private int partition;
 	private AtomicBoolean started=new AtomicBoolean(false);
 	private boolean running;
+	private Handler<Object> defaultHandler;
 	
 	@SuppressWarnings("rawtypes")
 	private Map<Class,Handler> handlerMap=new HashMap<Class,Handler>();
 	
-	public <T> TestConsumer on(Class<T> clz,Handler<T> handler){
+	public <T> KConsumer on(Class<T> clz,Handler<T> handler){
 		handlerMap.put(clz, handler);
+		return this;
+	}
+	
+	public KConsumer onDefault(Handler<Object> handler){
+		this.defaultHandler=handler;
 		return this;
 	}
 	
     private List<SocketInfo> replicaBrokers;
  
-    private TestConsumer(){;}
+    private KConsumer(){;}
     private void init(String topic,int partition,List<SocketInfo> replicaBrokers){
     	this.replicaBrokers=replicaBrokers;
     	this.topic=topic;
     	this.partition=partition;
     }
-    public TestConsumer(String topic,int partition,int port,String... seedBrokers){
+    public KConsumer(String topic,int partition,int port,String... seedBrokers){
     	this();
     	if(topic==null)return;
     	if(seedBrokers==null)return;
@@ -59,7 +65,7 @@ public class TestConsumer {
     	init(topic,partition,brokers);
     	infoValid=true;
     }
-    public TestConsumer(String topic,int partition,String[] seedBrokers,int[] ports) {
+    public KConsumer(String topic,int partition,String[] seedBrokers,int[] ports) {
     	this();
     	if(topic==null)return;
     	if(seedBrokers==null)return;
@@ -75,7 +81,7 @@ public class TestConsumer {
     	infoValid=true;
     }
     
-    public boolean start(int offset){
+    public boolean start(long offset){
     	if(!infoValid)return false;
     	if(started.compareAndSet(false, true)){
     		new Thread(
@@ -100,7 +106,7 @@ public class TestConsumer {
     	this.running=false;
     }
 
-	private void run(int offset) throws Exception {
+	private void run(long offset) throws Exception {
         // find the meta data about the topic and partition we are interested in
         //
         SocketInfo lead = findLeader(replicaBrokers, topic, partition);
@@ -178,9 +184,13 @@ public class TestConsumer {
 					Handler<Object> h = this.handlerMap.get(clz);
                 	if(h!=null){
 	                	Object object = PSSerializer.getInstance().deser(key.arrayOffset()+key.limit()+4, key.capacity()-4-key.limit(), key.array(), clz);
-                    	h.handle(object);
+                    	h.handle(currentOffset,object);
+                	}else if(this.defaultHandler!=null){
+                    	log.warn("no handler defined for "+clz+", use default handler instead");
+                    	Object object = PSSerializer.getInstance().deser(key.arrayOffset()+key.limit()+4, key.capacity()-4-key.limit(), key.array(), clz);
+                    	this.defaultHandler.handle(currentOffset,object);
                 	}else{
-                    	log.warn("no handler defined for "+clz);
+                    	log.warn("no handler defined for "+clz+", and no default handler defined either");
                     }
                 }else{
                 	log.warn("no class is register for serialization "+cls);

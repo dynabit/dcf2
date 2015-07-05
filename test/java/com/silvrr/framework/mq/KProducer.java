@@ -6,15 +6,15 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-import com.silvrr.framework.PSSerializer;
+import com.silvrr.framework.serialize.PSSerializer;
 
-public class TestProducer {
+public class KProducer {
 	private KafkaProducer<byte[], byte[]> producer;
-	private static TestProducer instance = new TestProducer();
-	public static TestProducer getInstance(){
+	private static KProducer instance = new KProducer();
+	public static KProducer getInstance(){
 		return instance;
 	}
-	private TestProducer(){
+	private KProducer(){
 		Properties props = new Properties();
 		props.put("bootstrap.servers", "localhost:9092");
 	    props.put("key.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
@@ -36,7 +36,7 @@ public class TestProducer {
 		}
 	}
 	public static void main(String[] args) throws Exception {
-		TestProducer.getInstance();
+		KProducer.getInstance();
 		Thread.sleep(5000);
 	}
 }
