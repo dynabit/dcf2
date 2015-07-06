@@ -15,6 +15,7 @@ import com.silvrr.test.biz.OperateRequest;
 
 public class KVSTest {
 	public static void main(String[] args) throws Exception {
+		ASDKVS.initInstance("192.168.1.15",3000);
 		OperateRequest r = new OperateRequest();
 		r.amount=100;r.uid=1L;r.message="heihei";r.txID="txid01";
 		ASDKVS.getInstance().fire(r,keyOfOperateRequest,binsOfOperateRequest);

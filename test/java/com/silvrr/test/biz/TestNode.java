@@ -10,10 +10,12 @@ import com.silvrr.framework.kvs.ASDKVS;
 import com.silvrr.framework.kvs.ASDConverter.BinsOf;
 import com.silvrr.framework.kvs.ASDConverter.KeyOf;
 import com.silvrr.framework.mq.KConsumer;
+import com.silvrr.framework.serialize.PSSerializer;
 
 import static com.silvrr.test.biz.CVT.*;
 
 class CVT{
+	@SuppressWarnings("unchecked")
 	public static<T> T cast(Object o){
 		try{
 			return (T) o;
@@ -43,7 +45,7 @@ public class TestNode {
 	
 	private Map<Long,Account> accounts = new HashMap<Long,Account>();
 	private KConsumer consumer = new KConsumer("stateChange", 0, 9092, "localhost");
-	private ASDKVS kvs = ASDKVS.getInstance();
+	private ASDKVS kvs = ASDKVS.initInstance("localhost", 3000);
 	private long startFromOffset=0;
 	
 	public TestNode(){
@@ -53,7 +55,7 @@ public class TestNode {
 		System.out.println("begin scan all");
 		this.kvs.scanAll("test", "partition0", (Key key, Record record)->{
 			Account acct = toAcct(record);
-			System.out.println("fetched record : "+acct);
+			System.out.println("fetched record : "+acct+" @ "+key);
 			this.accounts.put(acct.uid, acct);
 			this.startFromOffset=Math.max(this.startFromOffset, acct.offset);
 		});
@@ -61,23 +63,29 @@ public class TestNode {
 	}
 	public void run(){
 		consumer.on(OperateRequest.class, (long offset,OperateRequest req)->{
-			System.out.println("recved "+req);
+			System.out.println("recved "+req+",offset:"+offset);
 			Account acct = accounts.get(req.uid);
-			if(acct!=null){
-				acct.balance+=req.amount;
-			}else{
+			if(acct==null){
 				acct=new Account();
-				acct.balance=req.amount;
-				acct.offset=offset;
 				acct.uid=req.uid;
+				acct.offset=-1L;
 				accounts.put(acct.uid, acct);
 			}
-			ASDKVS.getInstance().fire(acct,keyOfAccount,binsOfAccount);
+			if(offset>acct.offset){
+				//only handle if offset is newer
+				acct.balance+=req.amount;
+				acct.offset=offset;
+				this.kvs.fire(acct,keyOfAccount,binsOfAccount);
+				System.out.println("sent "+acct);
+			}
 		}).onDefault((offset,req)->{
 			System.out.println("no handling logic defined for "+offset+" "+req.toString());
 		}).start(this.startFromOffset);
 	}
 	public static void main(String[] args) {
+//		ASDKVS.initInstance("localhost", 3000).delete(new Key("test","partition0",1L));
+//		if(true)return;
+		PSSerializer.getInstance().register(OperateRequest.class);
 		TestNode node=new TestNode();
 		node.run();
 	}
