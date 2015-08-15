@@ -3,6 +3,7 @@ package com.silvrr.framework.kvs;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.aerospike.client.Key;
+import com.aerospike.client.Record;
 import com.aerospike.client.ScanCallback;
 import com.aerospike.client.async.AsyncClient;
 import com.aerospike.client.policy.CommitLevel;
@@ -61,5 +62,9 @@ public class ASDKVS {
 	
 	public void delete(Key key){
 		this.client.delete(wPolicy, key);
+	}
+	
+	public Record get(Key key){
+		return this.client.get(null, key);
 	}
 }
