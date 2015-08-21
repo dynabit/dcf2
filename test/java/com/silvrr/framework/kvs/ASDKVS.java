@@ -2,6 +2,7 @@ package com.silvrr.framework.kvs;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.aerospike.client.ScanCallback;
@@ -49,11 +50,24 @@ public class ASDKVS {
 	
 	@Override
 	protected void finalize(){
+		System.out.println("errorno of sending to aero spike is : "+err);
 		this.client.close();
 	}
-	
+	private int err=0;
 	public <T> void fire(T obj,KeyOf<T> key,BinsOf<T> bins){
-		this.client.put(wPolicy,null,key.of(obj),bins.of(obj));
+		this.client.put(wPolicy,new com.aerospike.client.listener.WriteListener(){
+			@Override
+			public void onSuccess(Key key) {
+				// TODO Auto-generated method stub
+				
+			}
+
+			@Override
+			public void onFailure(AerospikeException exception) {
+				// TODO Auto-generated method stub
+				err++;System.out.println(".");
+				if(err%10==0)System.out.println(exception.getMessage());
+			}},key.of(obj),bins.of(obj));
 	}
 	
 	public void scanAll(String namespace,String set,ScanCallback callback){

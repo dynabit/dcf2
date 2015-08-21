@@ -1,6 +1,7 @@
 package com.silvrr.framework.mq;
 
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -10,13 +11,17 @@ import com.silvrr.framework.serialize.PSSerializer;
 
 public class KProducer {
 	private KafkaProducer<byte[], byte[]> producer;
-	private static KProducer instance = new KProducer();
-	public static KProducer getInstance(){
+	private static KProducer instance = null;//new KProducer();
+	private static AtomicBoolean inited = new AtomicBoolean(false);
+	public static KProducer getInstance(String ip){
+		if(inited.compareAndSet(false, true)){
+			instance = new KProducer(ip);
+		}
 		return instance;
 	}
-	private KProducer(){
+	private KProducer(String ip){
 		Properties props = new Properties();
-		props.put("bootstrap.servers", "localhost:9092");
+		props.put("bootstrap.servers", ip+":9092");
 	    props.put("key.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
 	    props.put("value.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
 	    // Use random partitioner. Don't need the key type. Just set it to Integer.
@@ -36,7 +41,7 @@ public class KProducer {
 		}
 	}
 	public static void main(String[] args) throws Exception {
-		KProducer.getInstance();
+		KProducer.getInstance("localhost");
 		Thread.sleep(5000);
 	}
 }

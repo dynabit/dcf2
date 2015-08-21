@@ -200,8 +200,9 @@ public class KConsumer {
  
             if (numRead == 0) {
                 try {
-                	Thread.sleep(1000);
-                } catch (InterruptedException ie) {
+                	Thread.sleep(1);
+                	//LockSupport.parkNanos(1000L);
+                } catch (Exception e) {
                 }
             }
         }
