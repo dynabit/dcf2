@@ -106,7 +106,7 @@ public class TestNode {
 //		ASDKVS.initInstance("localhost", 3000).delete(new Key("test","partition0",1L));
 //		if(true)return;
 		if(args.length!=2){
-			System.out.println("args: kafkaIp,aerospikeId");
+			System.out.println("args: kafkaIp,aerospikeIp");
 			return;
 		}
 		PSSerializer.getInstance().register(OperateRequest.class);
